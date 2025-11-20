@@ -1,11 +1,14 @@
 #!/usr/bin/env node
 /**
  * MCP Screen Observer
- * * A local-first MCP server that monitors screen activity and provides semantic summaries to LLMs.
+ * A local-first MCP server that monitors screen activity and provides semantic summaries to LLMs.
  */
 
-// 환경 설정을 가장 먼저 import
+// Import environment configuration first
 import "./env-setup.js";
+
+// Window helper functions are implemented in `src/helpers.ts`
+import { findWindowByTitle, getAvailableWindowsList, findMostLikelyTargetWindow } from "./helpers.js";
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -25,7 +28,7 @@ import { join } from "path";
 import { windowManager } from "node-window-manager";
 
 // --- Dynamic Import for AI Library ---
-// 설정을 적용한 후 라이브러리를 불러옵니다.
+// Load AI library after applying environment settings
 const { pipeline, env, RawImage } = await import("@xenova/transformers");
 
 // --- Configuration ---
@@ -63,55 +66,8 @@ const WINDOW_PRIORITIES = process.env.VISION_CONTEXT_WINDOW_PRIORITIES
 // Format: VISION_CONTEXT_TARGET_WINDOW="Simulator"
 const TARGET_WINDOW_TITLE = process.env.VISION_CONTEXT_TARGET_WINDOW || null;
 
-// --- Helper Functions ---
-
-// Smart window detection - prioritizes based on configured patterns
-function findMostLikelyTargetWindow() {
-  const windows = windowManager.getWindows();
-
-  // Convert string patterns to RegExp (case-insensitive)
-  const patterns = WINDOW_PRIORITIES.map(p => new RegExp(p, 'i'));
-
-  for (const pattern of patterns) {
-    const window = windows.find(w => pattern.test(w.getTitle()));
-    if (window) return window;
-  }
-
-  return null;
-}
-
-// Helper function to find window by title (supports partial matching)
-function findWindowByTitle(searchTitle: string) {
-  const windows = windowManager.getWindows();
-  const search = searchTitle.toLowerCase().trim();
-
-  // Priority 1: Exact match
-  let window = windows.find(w => w.getTitle().toLowerCase() === search);
-  if (window) return window;
-
-  // Priority 2: Starts with (more precise than contains)
-  window = windows.find(w => w.getTitle().toLowerCase().startsWith(search));
-  if (window) return window;
-
-  // Priority 3: Contains (most flexible)
-  window = windows.find(w => w.getTitle().toLowerCase().includes(search));
-  return window;
-}
-
-// Helper function to get available windows list (for error messages)
-function getAvailableWindowsList(): string {
-  const windows = windowManager.getWindows()
-    .filter(w => w.getTitle() && w.getTitle().trim() !== "")
-    .slice(0, 20); // Limit to 20 windows to avoid overwhelming
-
-  if (windows.length === 0) {
-    return "No windows currently available.";
-  }
-
-  return windows
-    .map((w, i) => `  ${i + 1}. "${w.getTitle()}"`)
-    .join('\n');
-}
+// Helper functions are provided by `src/helpers.ts` and imported above.
+// Calls in this file pass the system window list and configured priorities explicitly.
 
 // --- State Management ---
 
@@ -152,8 +108,8 @@ const captioner = await pipeline("image-to-text", CONFIG.MODEL_NAME);
 console.error("[System] Vision Model Loaded.");
 
 // Initialize target window if specified
-if (TARGET_WINDOW_TITLE) {
-  const targetWindow = findWindowByTitle(TARGET_WINDOW_TITLE);
+  if (TARGET_WINDOW_TITLE) {
+  const targetWindow = findWindowByTitle(TARGET_WINDOW_TITLE, windowManager.getWindows());
   if (targetWindow) {
     targetWindowId = targetWindow.id;
     globalContext.targetWindow = targetWindow.getTitle();
@@ -246,7 +202,7 @@ async function startMonitoringLoop() {
       // 4. AI Analysis
       if (changeRatio > CONFIG.CHANGE_TRIGGER_PERCENT) {
 
-        // 임시 파일로 저장 후 RawImage로 읽기
+        // Save temporary file and read as RawImage
         const tempPath = join(tmpdir(), `screen-${Date.now()}.png`);
         try {
           writeFileSync(tempPath, imgBuff);
@@ -266,11 +222,11 @@ async function startMonitoringLoop() {
 
           console.error(`[Update] Change: ${(changeRatio * 100).toFixed(1)}% | Summary: "${generatedText}"`);
         } finally {
-          // 임시 파일 삭제
+          // Delete temporary file
           try {
             unlinkSync(tempPath);
           } catch (e) {
-            // 파일 삭제 실패는 무시
+            // Ignore cleanup errors
           }
         }
       }
@@ -505,14 +461,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     let detectedWindow: string | undefined;
 
     if (windowTitle) {
-      const window = findWindowByTitle(windowTitle);
+      const window = findWindowByTitle(windowTitle, windowManager.getWindows());
       if (!window) {
         return {
           content: [
             {
               type: "text",
               text: `❌ Window "${windowTitle}" not found.\n\n` +
-                    `📋 Available windows:\n${getAvailableWindowsList()}\n\n` +
+                    `📋 Available windows:\n${getAvailableWindowsList(windowManager.getWindows())}\n\n` +
                     `💡 Tip: You can use partial names (e.g., "Sim" for "iOS Simulator")`
             }
           ]
@@ -522,7 +478,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       detectedWindow = window.getTitle();
     } else {
       // Auto-detect most likely target
-      const autoWindow = findMostLikelyTargetWindow();
+      const autoWindow = findMostLikelyTargetWindow(windowManager.getWindows(), WINDOW_PRIORITIES);
       if (autoWindow) {
         windowId = autoWindow.id;
         detectedWindow = autoWindow.getTitle();

@@ -388,13 +388,16 @@ export TRANSFORMERS_OFFLINE=1             # Disable auto-download
 ```bash
 git clone https://github.com/yourusername/vision-context-mcp.git
 cd vision-context-mcp
-npm install
-npm run build
+# Install dependencies with Bun (preferred)
+bun install
+# Build the project
+bun run build
 ```
 
 ### Development Mode
+Use Bun to run the development script (watches files):
 ```bash
-npm run dev
+bun run dev
 ```
 
 ### Project Structure
@@ -402,8 +405,12 @@ npm run dev
 vision-context-mcp/
 ├── src/
 │   ├── index.ts           # Main MCP server
-│   └── env-setup.ts       # Environment configuration
+│   ├── env-setup.ts       # Environment configuration
+│   ├── helpers.ts         # Window helper utilities
+│   └── test-image.ts      # Helper used for development/testing
 ├── dist/                  # Built output
+├── tests/                 # Test suite
+│   └── helpers.test.ts
 ├── package.json
 └── README.md
 ```
@@ -448,7 +455,7 @@ MIT License - see [LICENSE](LICENSE) file for details.
 - [ ] OCR for text extraction
 - [ ] Video export functionality
 - [ ] Custom window filter patterns
-- [ ] Configurable buffer duration
+- [x] Configurable buffer duration (implemented via `VISION_CONTEXT_BUFFER_DURATION` environment variable)
 - [ ] Multi-monitor support
 - [ ] Selective region capture
 
