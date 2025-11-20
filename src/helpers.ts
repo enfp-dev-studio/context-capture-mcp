@@ -2,12 +2,7 @@
  * Helper functions for window management and matching
  */
 
-export interface Window {
-  id: number;
-  getTitle(): string;
-  getBounds(): { x?: number; y?: number; width?: number; height?: number };
-  path: string;
-}
+import { Window } from "node-window-manager";
 
 /**
  * Find window by title with flexible matching
